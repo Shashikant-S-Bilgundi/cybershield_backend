@@ -1,0 +1,10 @@
+{
+  "name": "@shieldops/node",
+  "version": "0.1.0",
+  "description": "Send errors, API performance and security events from Node.js apps to ShieldOps.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}

@@ -10,6 +10,7 @@ import { Application } from '../models/Application.js';
 import { ASSET_TYPES, AUTH_METHODS, Asset } from '../models/Asset.js';
 import { audit } from '../services/audit.js';
 import { notifyAll } from '../services/notify.js';
+import { stopMonitoringFor } from '../services/cleanup.js';
 import { getAllowlist } from '../services/settings.js';
 
 export const assetsRouter = Router();
@@ -136,6 +137,7 @@ assetsRouter.patch('/assets/:id/status', async (req, res) => {
   const { status } = parse(z.object({ status: z.enum(['active', 'paused', 'archived']) }), req.body);
   asset.status = status;
   await asset.save();
+  if (status !== 'active') await stopMonitoringFor({ assetId: asset._id }, false);
   await audit(req, `asset.${status === 'paused' ? 'pause' : status === 'archived' ? 'archive' : 'resume'}`, 'asset', asset.id, `${status === 'paused' ? 'Paused' : status === 'archived' ? 'Archived' : 'Resumed'} monitoring for ${asset.identifier}`);
   res.json(asset.toJSON());
 });
@@ -144,6 +146,7 @@ assetsRouter.delete('/assets/:id', requireReauth, async (req, res) => {
   const asset = await findAsset(req.params.id);
   asset.deletedAt = new Date();
   await asset.save();
+  await stopMonitoringFor({ assetId: asset._id });
   await audit(req, 'asset.delete', 'asset', asset.id, `Deleted ${asset.identifier} (restorable for 30 days)`);
   await notifyAll('An asset was deleted', `${req.user!.name} deleted ${asset.identifier}. It can be restored for 30 days.`);
   res.status(204).end();

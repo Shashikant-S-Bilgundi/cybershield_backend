@@ -26,6 +26,12 @@ const settingsSchema = new Schema(
       passwordEnc: { type: String, default: null },
     },
     internalAllowlist: { type: [{ cidr: String, note: String, _id: false }], default: [] },
+    /** Who gets alert emails, and how often critical alerts are repeated while nobody acknowledges them. */
+    channels: {
+      emailRecipients: { type: [String], default: [] },
+      criticalRenotifyMin: { type: Number, default: 15 },
+      maxRenotify: { type: Number, default: 4 },
+    },
     ai: {
       enabled: { type: Boolean, default: false },
       provider: { type: String, enum: ['openai', 'anthropic', 'azure_openai'], default: 'openai' },

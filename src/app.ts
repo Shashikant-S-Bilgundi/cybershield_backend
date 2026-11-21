@@ -15,14 +15,22 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { notBuiltRouter } from './routes/notBuilt.js';
 import { settingsRouter } from './routes/settings.js';
 import { teamRouter } from './routes/team.js';
+import { alertRulesRouter } from './routes/alertRules.js';
+import { alertsRouter } from './routes/alerts.js';
+import { checksRouter } from './routes/checks.js';
+import { findingsRouter } from './routes/findings.js';
+import { heartbeatsRouter } from './routes/heartbeats.js';
+import { monitorsRouter } from './routes/monitors.js';
+import { ingestRouter } from './routes/ingest.js';
+import { ingestionKeysRouter } from './routes/ingestionKeys.js';
+import { telemetryRouter } from './routes/telemetry.js';
 
 export function createApp(): Express {
   const app = express();
   app.set('trust proxy', config.TRUST_PROXY);
   app.disable('x-powered-by');
 
-  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } }));
-  app.use(cors({ origin: config.allowedOrigins, credentials: true, methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] }));
+  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } }, crossOriginResourcePolicy: false }));
   // One short line per request: method, full path, status and time. No headers, so no cookies or tokens in logs.
   // Real server faults are logged with their stack by the error handler; here, 5xx answers stay one line.
   app.use(
@@ -38,6 +46,12 @@ export function createApp(): Express {
   );
 
   app.use(express.json({ limit: '256kb' }));
+
+  // Telemetry from your apps: key-authenticated, open to any origin, no cookies. Mounted before the
+  // console's CORS policy, which only allows the ShieldOps frontend.
+  app.use('/ingest/v1', ingestRouter);
+
+  app.use(cors({ origin: config.allowedOrigins, credentials: true, methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] }));
   app.use(cookieParser());
 
   app.get(['/health', '/api/v1/health'], (_req, res) => res.json({ ok: true }));
@@ -48,7 +62,10 @@ export function createApp(): Express {
     next();
   });
   api.use(checkOrigin);
-  api.use(authRouter, teamRouter, applicationsRouter, assetsRouter, auditRouter, settingsRouter, dashboardRouter, notBuiltRouter);
+  api.use(authRouter, teamRouter, applicationsRouter, checksRouter, assetsRouter, auditRouter, settingsRouter, dashboardRouter);
+  api.use(monitorsRouter, heartbeatsRouter, alertsRouter, findingsRouter, alertRulesRouter);
+  api.use(telemetryRouter, ingestionKeysRouter);
+  api.use(notBuiltRouter);
   api.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No such endpoint.' } }));
   app.use('/api/v1', api);
 

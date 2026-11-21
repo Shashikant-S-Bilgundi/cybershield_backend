@@ -7,6 +7,7 @@ import { Asset } from '../models/Asset.js';
 import { User } from '../models/User.js';
 import { audit } from '../services/audit.js';
 import { notifyAll } from '../services/notify.js';
+import { stopMonitoringFor } from '../services/cleanup.js';
 
 export const applicationsRouter = Router();
 applicationsRouter.use('/applications', requireAuth);
@@ -99,6 +100,7 @@ applicationsRouter.delete('/applications/:id', requireReauth, async (req, res) =
   app.deletedAt = now;
   await app.save();
   await Asset.updateMany({ applicationId: app._id, deletedAt: null }, { deletedAt: now });
+  await stopMonitoringFor({ applicationId: app._id });
   await audit(req, 'application.delete', 'application', app.id, `Deleted application ${app.name} (restorable for 30 days)`);
   await notifyAll('An application was deleted', `${req.user!.name} deleted ${app.name} and its assets. It can be restored for 30 days.`);
   res.status(204).end();

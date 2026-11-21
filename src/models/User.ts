@@ -1,5 +1,4 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mongoose';
-import { toJSONPlugin } from './plugins.js';
 
 const userSchema = new Schema(
   {
@@ -7,18 +6,25 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
     status: { type: String, enum: ['active', 'disabled'], default: 'active' },
-    mfaEnabled: { type: Boolean, default: false },
-    /** Encrypted TOTP secret (lib/crypto). */
-    totpSecretEnc: { type: String, default: null },
-    /** Last accepted TOTP time step, so a code cannot be used twice. */
-    totpLastStep: { type: Number, default: 0 },
     lastLoginAt: { type: Date, default: null },
     invitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-toJSONPlugin(userSchema, { hidden: ['passwordHash', 'totpSecretEnc', 'totpLastStep'] });
+/** Only these fields ever leave the API, whatever else is stored on the document. */
+userSchema.set('toJSON', {
+  versionKey: false,
+  transform: (_doc, ret: Record<string, unknown>) => ({
+    id: String(ret._id),
+    name: ret.name,
+    email: ret.email,
+    status: ret.status,
+    lastLoginAt: ret.lastLoginAt ?? null,
+    invitedBy: ret.invitedBy ? String(ret.invitedBy) : null,
+    createdAt: ret.createdAt,
+  }),
+});
 
 export type UserDoc = HydratedDocument<InferSchemaType<typeof userSchema>>;
 export const User = model('User', userSchema);

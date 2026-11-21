@@ -4,12 +4,12 @@ import { randomToken, sha256 } from '../lib/crypto.js';
 import { ApiError, notFound } from '../lib/errors.js';
 import { hashPassword, passwordProblem } from '../lib/password.js';
 import { email, objectId, parse, z } from '../lib/validate.js';
-import { requireAuth, requireReauth } from '../middleware/auth.js';
+import { requireAuth, requireReauth, startSession } from '../middleware/auth.js';
 import { publicLimiter } from '../middleware/security.js';
 import { Invite } from '../models/Invite.js';
 import { User } from '../models/User.js';
 import { audit } from '../services/audit.js';
-import { startChallenge } from '../services/challenges.js';
+import { inBackground } from '../services/background.js';
 import { sendMail } from '../services/mailer.js';
 import { notifyAll } from '../services/notify.js';
 import { revokeSessions } from './auth.js';
@@ -37,10 +37,11 @@ teamRouter.post('/invites/:token/accept', publicLimiter, async (req, res) => {
   if (problem) throw new ApiError(422, 'WEAK_PASSWORD', problem);
   const inv = await findLiveInvite(String(req.params.token));
   if (await User.exists({ email: inv.email })) throw new ApiError(409, 'USER_EXISTS', 'An account with this email already exists. Sign in instead.');
-  const user = await User.create({ name: body.name, email: inv.email, passwordHash: await hashPassword(body.password), invitedBy: inv.invitedBy });
+  const user = await User.create({ name: body.name, email: inv.email, passwordHash: await hashPassword(body.password), invitedBy: inv.invitedBy, lastLoginAt: new Date() });
   await inv.deleteOne();
   await audit(req, 'user.join', 'user', user.id, `${user.name} accepted their invite`, { id: user._id, name: user.name });
-  res.status(201).json(await startChallenge(user));
+  const session = await startSession(req, res, user);
+  res.status(201).json({ user: user.toJSON(), reauthUntil: session.reauthUntil?.toISOString() ?? null });
 });
 
 /* ───────────── everything below needs a session ───────────── */
@@ -60,7 +61,7 @@ teamRouter.post('/invites', requireReauth, async (req, res) => {
   const token = randomToken(32);
   const inv = await Invite.create({ email: addr, invitedBy: req.user!._id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + INVITE_DAYS * 86_400_000) });
   const link = `${config.appUrl}/invite/${token}`;
-  void sendMail(addr, `${req.user!.name} invited you to ShieldOps`, `${req.user!.name} invited you to ShieldOps, the IT team's monitoring console.\n\nSet up your account: ${link}\n\nThe link works for ${INVITE_DAYS} days.`);
+  inBackground(sendMail(addr, `${req.user!.name} invited you to ShieldOps`, `${req.user!.name} invited you to ShieldOps, the IT team's monitoring console.\n\nSet up your account: ${link}\n\nThe link works for ${INVITE_DAYS} days.`), 'invite email');
   await audit(req, 'user.invite', 'user', null, `Invited ${addr}`);
   await notifyAll('A user was invited', `${req.user!.name} invited ${addr} to ShieldOps.`);
   res.status(201).json({ ...inv.toJSON(), link });

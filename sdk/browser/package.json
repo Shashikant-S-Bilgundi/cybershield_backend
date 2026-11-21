@@ -1,0 +1,12 @@
+{
+  "name": "@shieldops/browser",
+  "version": "0.1.0",
+  "description": "Send front-end errors from browser apps to ShieldOps.",
+  "type": "module",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "sideEffects": false,
+  "license": "UNLICENSED"
+}

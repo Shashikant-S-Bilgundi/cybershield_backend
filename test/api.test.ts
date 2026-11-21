@@ -1,10 +1,11 @@
 import mongoose from 'mongoose';
+import { drainBackground } from '../src/services/background.js';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AuditLog } from '../src/models/AuditLog.js';
 import { Session } from '../src/models/Session.js';
 import { User } from '../src/models/User.js';
-import { app, codeFor, del, freshDb, get, ORIGIN, patch, post, setupFirstUser } from './helpers.js';
+import { app, del, freshDb, get, ORIGIN, patch, post, setupFirstUser } from './helpers.js';
 
 let admin: Awaited<ReturnType<typeof setupFirstUser>>;
 const expireReauth = () => Session.updateMany({}, { reauthUntil: new Date(0) });
@@ -13,6 +14,7 @@ beforeAll(async () => {
   await freshDb();
 });
 afterAll(async () => {
+  await drainBackground();
   await mongoose.disconnect();
 });
 
@@ -22,7 +24,7 @@ describe('first-time setup and sign-in', () => {
     admin = await setupFirstUser();
     expect(admin.user.email).toBe('admin@example.com');
     expect(admin.user.passwordHash).toBeUndefined();
-    expect(admin.user.totpSecretEnc).toBeUndefined();
+    expect((await get(admin.agent, '/auth/me')).body.user.email).toBe('admin@example.com');
     const again = await post(request.agent(app), '/setup', { name: 'X', email: 'x@example.com', password: 'AnotherPass123' });
     expect(again.status).toBe(409);
   });
@@ -32,25 +34,30 @@ describe('first-time setup and sign-in', () => {
     expect([404, 422]).toContain(r.status);
   });
 
-  it('sets an httpOnly, SameSite=Lax session cookie and returns the session', async () => {
+  it('signs in with email and password in one step, with an httpOnly, SameSite=Lax cookie', async () => {
     const agent = request.agent(app);
-    const login = await post(agent, '/auth/login', { email: admin.email, password: admin.password });
-    expect(login.body.status).toBe('mfa_required');
-    const verify = await post(agent, '/auth/mfa/verify', { challengeId: login.body.challengeId, code: codeFor(admin.secret, 1) });
-    expect(verify.status).toBe(200);
-    const cookie = String(verify.headers['set-cookie']);
+    const login = await post(agent, '/auth/login', { email: 'ADMIN@example.com', password: admin.password });
+    expect(login.status).toBe(200);
+    expect(login.body.user.email).toBe(admin.email);
+    expect(login.body.reauthUntil).toBeTruthy();
+    const cookie = String(login.headers['set-cookie']);
     expect(cookie).toMatch(/so_session=/);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=Lax/i);
     expect((await get(agent, '/auth/me')).body.user.email).toBe(admin.email);
+    expect(await AuditLog.countDocuments({ action: 'auth.login' })).toBeGreaterThanOrEqual(1);
   });
 
-  it('refuses a two-factor code that was already used', async () => {
-    const agent = request.agent(app);
-    const login = await post(agent, '/auth/login', { email: admin.email, password: admin.password });
-    const r = await post(agent, '/auth/mfa/verify', { challengeId: login.body.challengeId, code: codeFor(admin.secret, 1) });
-    expect(r.status).toBe(401);
-    expect(r.body.error.code).toBe('INVALID_CODE');
+  it('never sends fields left over from the two-factor version', async () => {
+    await User.collection.updateMany({}, { $set: { mfaEnabled: true, totpSecretEnc: 'v1.old.secret', totpLastStep: 9 } });
+    const body = JSON.stringify((await get(admin.agent, '/users')).body) + JSON.stringify((await get(admin.agent, '/auth/me')).body);
+    expect(body).not.toMatch(/totp|mfaEnabled|passwordHash/);
+    expect(Object.keys((await get(admin.agent, '/auth/me')).body.user).sort()).toEqual(['createdAt', 'email', 'id', 'invitedBy', 'lastLoginAt', 'name', 'status']);
+  });
+
+  it('no longer has a two-factor step', async () => {
+    const r = await post(request.agent(app), '/auth/mfa/verify', { challengeId: 'x'.repeat(20), code: '123456' });
+    expect(r.status).toBe(404);
   });
 
   it('gives the same answer for a wrong password and an unknown email', async () => {
@@ -77,9 +84,9 @@ describe('request safety', () => {
   });
 
   it('answers 501 with the phase for endpoints that are not built yet', async () => {
-    const r = await get(admin.agent, '/monitors');
+    const r = await get(admin.agent, '/servers');
     expect(r.status).toBe(501);
-    expect(r.body.error.message).toMatch(/phase 2/);
+    expect(r.body.error.message).toMatch(/phase 4/);
   });
 
   it('never lets audit records be changed', async () => {
@@ -97,6 +104,7 @@ describe('critical actions and the team', () => {
     expect(blocked.status).toBe(403);
     expect(blocked.body.error.code).toBe('REAUTH_REQUIRED');
     expect((await post(admin.agent, '/auth/reauth', { password: 'nope-nope-1' })).status).toBe(401);
+    expect((await post(admin.agent, '/auth/reauth', { code: '123456' })).status).toBe(422);
     expect((await post(admin.agent, '/auth/reauth', { password: admin.password })).status).toBe(200);
     const inv = await post(admin.agent, '/invites', { email: 'Kiran@Example.com' });
     expect(inv.status).toBe(201);
@@ -107,16 +115,16 @@ describe('critical actions and the team', () => {
     expect((await post(admin.agent, '/invites', { email: 'kiran@example.com' })).status).toBe(409);
   });
 
-  it('lets the invited person join and enrol two-factor', async () => {
+  it('lets the invited person join and signs them straight in', async () => {
     const token = inviteLink.split('/').pop()!;
     const anon = request.agent(app);
     expect((await get(anon, `/invites/${token}`)).body.email).toBe('kiran@example.com');
     const weak = await post(anon, `/invites/${token}/accept`, { name: 'Kiran', password: 'short1' });
     expect(weak.body.error.code).toBe('WEAK_PASSWORD');
     const acc = await post(anon, `/invites/${token}/accept`, { name: 'Kiran Shetty', password: 'KiranPassword9' });
-    expect(acc.body.status).toBe('mfa_enroll');
-    const v = await post(anon, '/auth/mfa/verify', { challengeId: acc.body.challengeId, code: codeFor(acc.body.enrollment.secret) });
-    expect(v.status).toBe(200);
+    expect(acc.status).toBe(201);
+    expect(acc.body.user.email).toBe('kiran@example.com');
+    expect((await get(anon, '/auth/me')).body.user.name).toBe('Kiran Shetty');
     expect((await get(anon, `/invites/${token}`)).status).toBe(404);
   });
 

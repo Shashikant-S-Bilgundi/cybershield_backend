@@ -3,6 +3,8 @@ import { createApp } from './app.js';
 import { connectDb, disconnectDb } from './db.js';
 import { logger } from './lib/logger.js';
 import { runMaintenance } from './services/maintenance.js';
+import { startScheduler, stopScheduler } from './services/scheduler.js';
+import { drainBackground } from './services/background.js';
 
 try {
   await connectDb();
@@ -14,6 +16,7 @@ try {
   process.exit(1);
 }
 const server = createApp().listen(config.PORT, () => logger.info(`ShieldOps API listening on :${config.PORT}`));
+startScheduler();
 
 const daily = setInterval(() => runMaintenance().catch((err) => logger.error({ err }, 'Maintenance failed')), 24 * 3_600_000);
 void runMaintenance().catch((err) => logger.error({ err }, 'Maintenance failed'));
@@ -21,8 +24,12 @@ void runMaintenance().catch((err) => logger.error({ err }, 'Maintenance failed')
 function shutdown(signal: string) {
   logger.info(`${signal} received, shutting down`);
   clearInterval(daily);
+  stopScheduler();
   server.close(() => {
-    void disconnectDb().finally(() => process.exit(0));
+    // Let emails that are on their way finish before the database closes.
+    void drainBackground()
+      .then(() => disconnectDb())
+      .finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(1), 10_000).unref();
 }

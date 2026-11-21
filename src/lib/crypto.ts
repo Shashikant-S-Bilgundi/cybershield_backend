@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 
-/** URL-safe random token, used for sessions, challenges and invites. */
+/** URL-safe random token, used for sessions and invites. */
 export const randomToken = (bytes = 32) => randomBytes(bytes).toString('base64url');
 
 export const randomHex = (chars: number) => randomBytes(Math.ceil(chars / 2)).toString('hex').slice(0, chars);
@@ -15,7 +15,7 @@ export const safeEqual = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
-/** AES-256-GCM with the key from ENCRYPTION_KEY. Output: v1.<iv>.<tag>.<ciphertext>, base64url. */
+/** AES-256-GCM with the key from ENCRYPTION_KEY (SMTP and integration credentials). Output: v1.<iv>.<tag>.<ciphertext>, base64url. */
 export function encrypt(plain: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', config.encryptionKey, iv);

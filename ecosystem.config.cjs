@@ -5,7 +5,7 @@ module.exports = {
       name: 'shieldops-api',
       script: 'dist/server.js',
       cwd: __dirname,
-      // One process: rate limits and the daily maintenance job live in memory. Scale out only after moving them to Redis.
+      // One process: rate limits live in memory. The scheduler claims work atomically, so a second process would be safe for checks.
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '512M',

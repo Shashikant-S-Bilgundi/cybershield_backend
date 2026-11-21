@@ -27,13 +27,13 @@ export const loginLimiter = rateLimit({
   handler: limited('TOO_MANY_ATTEMPTS', 'Too many sign-in attempts. Wait 15 minutes and try again.'),
 });
 
-/** Two-factor and re-authentication attempts per IP: 20 per 15 minutes. */
-export const codeLimiter = rateLimit({
+/** Re-authentication attempts per IP: 20 per 15 minutes. */
+export const reauthLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  handler: limited('TOO_MANY_ATTEMPTS', 'Too many code attempts. Wait 15 minutes and try again.'),
+  handler: limited('TOO_MANY_ATTEMPTS', 'Too many password attempts. Wait 15 minutes and try again.'),
 });
 
 /** Public endpoints such as invite lookups: 60 per 15 minutes per IP. */

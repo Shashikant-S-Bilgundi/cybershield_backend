@@ -15,7 +15,7 @@ const cookieOptions = () => ({
   domain: config.COOKIE_DOMAIN || undefined,
 });
 
-/** Starts a session after password and two-factor both pass. A fresh sign-in counts as a re-authentication. */
+/** Starts a session once the password is accepted. A fresh sign-in counts as a re-authentication. */
 export async function startSession(req: Request, res: Response, user: UserDoc) {
   const token = randomToken(32);
   const now = Date.now();

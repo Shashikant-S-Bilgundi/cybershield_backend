@@ -2,9 +2,6 @@ import { Router } from 'express';
 
 /** Endpoints from later backend phases answer clearly instead of with a bare 404. */
 const LATER: [RegExp, number][] = [
-  [/^\/(monitors|heartbeats|checks|alerts|alert-rules|notification-channels|maintenance-windows|findings)(\/|$)/, 2],
-  [/^\/assets\/[^/]+\/recheck/, 2],
-  [/^\/(error-groups|performance|security-events|detections|auth\/sign-ins|ingestion-keys)(\/|$)/, 3],
   [/^\/(servers|db-checks|agent-tokens)(\/|$)/, 4],
   [/^\/(integrations|repositories|images|scans|dependencies)(\/|$)/, 5],
   [/^\/(incidents|remediation-tasks|sla)(\/|$)/, 6],
