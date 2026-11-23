@@ -1,3 +1,4 @@
+import { remoteSaysUp } from './probes.js';
 import { classify, guardedGet, guardedTcp, lookupRecords, type CheckError } from '../lib/probe.js';
 import { logger } from '../lib/logger.js';
 import { AlertRule } from '../models/AlertRule.js';
@@ -70,6 +71,18 @@ export async function runMonitor(m: MonitorDoc) {
   const before = m.status;
   m.lastCheckAt = now;
   m.lastLatencyMs = out.latencyMs;
+  // A failure here but success from another location points at the network near ShieldOps, not an outage.
+  const otherSide = out.status === 'down' ? await remoteSaysUp(m._id, m.intervalSec) : null;
+  if (out.status === 'down' && otherSide) {
+    m.consecutiveFailures = 0;
+    m.status = 'degraded';
+    if (before !== 'degraded') {
+      m.events.unshift({ at: now, from: before, to: 'degraded', reason: `Failed from this server (${REASON[out.error!]}) but reachable from ${otherSide}: not counted as down` } as never);
+      m.events.splice(50);
+    }
+    await m.save();
+    return out;
+  }
   if (out.status === 'down') {
     m.consecutiveFailures += 1;
     if (m.consecutiveFailures >= m.downAfterFailures) m.status = 'down';

@@ -18,6 +18,8 @@ const PATTERNS: [RegExp, string][] = [
   [/eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g, '[jwt]'],
   [/\b(sk|pk|rk|so)_(live|test|pub)_[\w]{8,}/g, '[key]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[aws-key]'],
+  [/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '[github-token]'],
+  [/\bxox[abposr]-[A-Za-z0-9-]{10,}\b/g, '[slack-token]'],
   [/\b[A-Fa-f0-9]{32,}\b/g, '[hex]'],
   [/\b(Bearer|Basic)\s+[\w.~+/-]+=*/gi, '$1 [redacted]'],
   [/[\w.+-]+@[\w-]+\.[\w.-]+/g, (m: string) => maskEmail(m)] as unknown as [RegExp, string],
@@ -44,4 +46,4 @@ export function normalizeMessage(message: string): string {
     .replace(/\b[0-9a-f]{12,}\b/gi, '<hex>')
     .replace(/\d+/g, '<n>')
     .slice(0, 300);
-}
+} 

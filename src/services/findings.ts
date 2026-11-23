@@ -17,18 +17,27 @@ export interface Problem {
   source: string;
   severity: Severity;
   evidence: { label: string; value: string }[];
+  /** On CISA's Known Exploited Vulnerabilities list: raises the risk score and priority. */
+  knownExploited?: boolean;
+  /** Secret or vulnerability detail from a code or image scan. */
+  code?: Record<string, unknown>;
 }
 
-/** Records that a check found a problem: creates the finding, refreshes it, or reopens it if it was thought fixed. */
-export async function reportProblem(asset: AssetDoc, p: Problem) {
+/**
+ * Records that a check found a problem: creates the finding, refreshes it, or reopens it if it was thought fixed.
+ * Returns whether it is new or came back, so scans can count them.
+ */
+export async function reportProblem(asset: AssetDoc, p: Problem): Promise<{ isNew: boolean; reopened: boolean }> {
   const app = await Application.findById(asset.applicationId);
-  const score = riskScore({ severity: p.severity, criticality: (app?.criticality ?? 'medium') as never, exposure: asset.exposure as 'internet' | 'internal', confidence: 'confirmed', knownExploited: false });
+  const knownExploited = !!p.knownExploited;
+  const score = riskScore({ severity: p.severity, criticality: (app?.criticality ?? 'medium') as never, exposure: asset.exposure as 'internet' | 'internal', confidence: 'confirmed', knownExploited });
   const priority = priorityFor(score);
   const now = new Date();
   const existing = await Finding.findOne({ key: p.key });
   if (!existing) {
-    return Finding.create({
+    await Finding.create({
       ...p,
+      knownExploited,
       applicationId: asset.applicationId,
       environmentId: asset.environmentId,
       assetId: asset._id as Types.ObjectId,
@@ -37,26 +46,29 @@ export async function reportProblem(asset: AssetDoc, p: Problem) {
       dueAt: new Date(now.getTime() + SLA_DAYS[priority] * DAY),
       firstSeen: now,
       lastSeen: now,
-      history: [{ at: now, actorName: 'ShieldOps', text: 'Detected by a scheduled check' }],
+      history: [{ at: now, actorName: 'ShieldOps', text: p.code ? 'Found by a scan' : 'Detected by a scheduled check' }],
     });
+    return { isNew: true, reopened: false };
   }
-  existing.set({ title: p.title, description: p.description, severity: p.severity, evidence: p.evidence, riskScore: score, priority, lastSeen: now });
-  if (existing.status === 'verified' || existing.status === 'resolved') {
+  existing.set({ title: p.title, description: p.description, severity: p.severity, evidence: p.evidence, riskScore: score, priority, lastSeen: now, knownExploited, ...(p.code ? { code: p.code } : {}) });
+  const reopened = existing.status === 'verified' || existing.status === 'resolved';
+  if (reopened) {
     existing.history.unshift({ at: now, actorName: 'ShieldOps', text: existing.status === 'verified' ? 'Reopened: the problem came back' : 'Reopened: the recheck still finds the problem' });
     existing.status = 'reopened';
     existing.dueAt = new Date(now.getTime() + SLA_DAYS[priority] * DAY);
   }
   await existing.save();
-  return existing;
+  return { isNew: false, reopened };
 }
 
-/** Records that a check passed: an open finding with this key is verified fixed. */
-export async function problemGone(key: string) {
+/** Records that a check passed: an open finding with this key is verified fixed. Returns whether one was. */
+export async function problemGone(key: string, why = 'Verified fixed by a recheck'): Promise<boolean> {
   const f = await Finding.findOne({ key, status: { $in: VERIFIABLE } });
-  if (!f) return;
+  if (!f) return false;
   f.status = 'verified';
-  f.history.unshift({ at: new Date(), actorName: 'ShieldOps', text: 'Verified fixed by a recheck' });
+  f.history.unshift({ at: new Date(), actorName: 'ShieldOps', text: why });
   await f.save();
+  return true;
 }
 
 /** Accepted risks come back for review when their date passes. */

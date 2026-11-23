@@ -6,6 +6,8 @@ import { Application } from '../models/Application.js';
 import { MaintenanceWindow } from '../models/MaintenanceWindow.js';
 import { Notification } from '../models/Notification.js';
 import { User } from '../models/User.js';
+import { inBackground } from './background.js';
+import { sendToChannel } from './channels.js';
 import { sendMail } from './mailer.js';
 import { getSettingsDoc } from './settings.js';
 
@@ -81,12 +83,24 @@ async function deliver(alert: AlertDoc, rule: AlertRuleDoc) {
       deliveries.push({ channel: 'email', recipient: to.join(', '), status: ok ? 'sent' : 'failed', at: now, attempts: 1 });
     }
   }
-  for (const ch of rule.channels.filter((c) => c === 'slack' || c === 'webhook')) {
-    deliveries.push({ channel: ch, recipient: 'Not set up yet', status: 'failed', at: now, attempts: 0 });
-  }
+  const remote = rule.channels.filter((c): c is 'slack' | 'webhook' => c === 'slack' || c === 'webhook');
+  for (const ch of remote) deliveries.push({ channel: ch, recipient: '', status: 'pending', at: now, attempts: 0 });
   alert.deliveries.push(...(deliveries as never[]));
   alert.lastNotifiedAt = now;
   await alert.save();
+  // Slack and webhooks can take seconds (and retry), so they finish in the background and update the delivery record.
+  for (const ch of remote) {
+    inBackground(
+      (async () => {
+        const r = await sendToChannel(ch, { id: alert.id, title: alert.title, message: alert.message, severity: alert.severity, applicationId: alert.applicationId, environmentId: alert.environmentId });
+        await Alert.updateOne(
+          { _id: alert._id, 'deliveries.channel': ch, 'deliveries.status': 'pending' },
+          { $set: { 'deliveries.$.status': r.ok ? 'sent' : 'failed', 'deliveries.$.recipient': r.recipient || r.detail, 'deliveries.$.attempts': r.attempts, 'deliveries.$.at': new Date() } },
+        );
+      })(),
+      `${ch} delivery for alert ${alert.id}`,
+    );
+  }
 }
 
 /** Opens an alert, or adds an occurrence to the open one with the same key. Escalation re-notifies. */

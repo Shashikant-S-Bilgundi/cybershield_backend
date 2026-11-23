@@ -8,6 +8,7 @@ import { Heartbeat } from '../models/Heartbeat.js';
 import { Monitor } from '../models/Monitor.js';
 import { expireAcceptedRisks } from './findings.js';
 import { ErrorEvent, ErrorGroup, ErrorUser, PerfMinute, SecurityEvent } from '../models/Telemetry.js';
+import { ServerSample } from '../models/Infra.js';
 
 const DAY = 86_400_000;
 
@@ -32,6 +33,7 @@ export async function runMaintenance() {
   await SecurityEvent.deleteMany({ at: { $lt: days(retention!.securityEventsDays) } });
   // The 7-day performance view needs at least 8 days of per-minute data.
   await PerfMinute.deleteMany({ minute: { $lt: days(Math.max(retention!.metricSamplesDays, 8)) } });
+  await ServerSample.deleteMany({ at: { $lt: days(Math.max(retention!.metricSamplesDays, 8)) } });
   // Retention is the only path that removes audit records; it bypasses the append-only guard on purpose.
   const audit = await AuditLog.collection.deleteMany({ at: { $lt: new Date(Date.now() - retention!.auditLogsDays * DAY) } });
   if (apps.deletedCount || assets.deletedCount || audit.deletedCount) {

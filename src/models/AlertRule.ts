@@ -38,7 +38,7 @@ ruleSchema.set('toJSON', {
 export type AlertRuleDoc = HydratedDocument<InferSchemaType<typeof ruleSchema>>;
 export const AlertRule = model('AlertRule', ruleSchema);
 
-/** Section 13 defaults (phases 2 and 3), created on start if missing. Built-in rules can be turned off but not deleted. */
+/** Section 13 defaults (phases 2 to 8), created on start if missing. Built-in rules can be turned off but not deleted. */
 export const DEFAULT_RULES = [
   { builtInKey: 'r1', name: 'Production site down', signal: 'uptime_down', threshold: 3, durationMin: null, severity: 'critical', scope: { applicationId: null, environmentType: 'production' }, channels: ['in_app', 'email'] },
   { builtInKey: 'r2', name: 'Site down (other environments)', signal: 'uptime_down', threshold: 3, durationMin: null, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
@@ -61,6 +61,18 @@ export const DEFAULT_RULES = [
   { builtInKey: 'r19', name: 'Brute-force login attempts', signal: 'failed_logins', threshold: 10, durationMin: null, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
   { builtInKey: 'r20', name: 'Credential stuffing', signal: 'credential_stuffing', threshold: 10, durationMin: null, severity: 'critical', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
   { builtInKey: 'r21', name: 'Spike in 401/403 responses', signal: 'auth_failure_spike', threshold: 3, durationMin: null, severity: 'medium', scope: { applicationId: null, environmentType: null }, channels: ['in_app'] },
+  { builtInKey: 'r22', name: 'High CPU', signal: 'cpu_high', threshold: 90, durationMin: 10, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r23', name: 'High memory', signal: 'memory_high', threshold: 90, durationMin: 10, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r24', name: 'Disk above 85%', signal: 'disk_high', threshold: 85, durationMin: null, severity: 'medium', scope: { applicationId: null, environmentType: null }, channels: ['in_app'] },
+  { builtInKey: 'r25', name: 'Disk above 95%', signal: 'disk_high', threshold: 95, durationMin: null, severity: 'critical', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r26', name: 'Server stopped reporting', signal: 'agent_offline', threshold: 3, durationMin: null, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r27', name: 'Service or container down', signal: 'process_down', threshold: 3, durationMin: null, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r28', name: 'Database not responding', signal: 'db_down', threshold: 3, durationMin: null, severity: 'critical', scope: { applicationId: null, environmentType: 'production' }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r29', name: 'Secret found in code', signal: 'secret_found', threshold: null, durationMin: null, severity: 'high', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r30', name: 'New critical or high vulnerability', signal: 'vuln_found', threshold: null, durationMin: null, severity: 'medium', scope: { applicationId: null, environmentType: null }, channels: ['in_app'] },
+  { builtInKey: 'r31', name: 'Known-exploited vulnerability', signal: 'vuln_exploited', threshold: null, durationMin: null, severity: 'critical', scope: { applicationId: null, environmentType: null }, channels: ['in_app', 'email'] },
+  { builtInKey: 'r32', name: 'Scans keep failing', signal: 'scan_failed', threshold: 3, durationMin: null, severity: 'medium', scope: { applicationId: null, environmentType: null }, channels: ['in_app'] },
+  { builtInKey: 'r33', name: 'Unusual pattern', signal: 'anomaly', threshold: 2, durationMin: null, severity: 'medium', scope: { applicationId: null, environmentType: 'production' }, channels: ['in_app'] },
 ] as const;
 
 export async function ensureDefaultRules() {

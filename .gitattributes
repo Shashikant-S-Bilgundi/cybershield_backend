@@ -1,0 +1,5 @@
+# Shell scripts and checksum files must keep Unix line endings to work on Linux servers.
+*.sh            text eol=lf
+agent/dist/SHA256SUMS text eol=lf
+# Built agent binaries are never text.
+agent/dist/shieldops-agent-* binary

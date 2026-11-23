@@ -39,6 +39,9 @@ authRouter.post('/setup', publicLimiter, async (req, res) => {
 /* ───────────── sign-in ───────────── */
 
 authRouter.post('/auth/login', loginLimiter, async (req, res) => {
+  const sso = (await getSettingsDoc()).sso!;
+  // With single sign-on on and the password route switched off, only SSO signs people in.
+  if (sso.enabled && !sso.allowPasswordFallback) throw new ApiError(403, 'SSO_REQUIRED', `Sign in with ${sso.provider === 'google' ? 'Google' : 'Microsoft'} instead.`);
   const body = parse(z.object({ email: z.string().trim().toLowerCase().max(254), password: z.string().max(256) }), req.body);
   const user = await User.findOne({ email: body.email });
   const ok = await verifyPassword(user?.passwordHash, body.password);

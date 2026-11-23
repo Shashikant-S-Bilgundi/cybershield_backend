@@ -1,6 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
 export interface ShieldOpsOptions {
+  /** Lowest log level sent by ShieldOps.logger. Default "info". */
+  logLevel?: LogLevel;
   /** A server ingestion key (so_live_…). Keep it in an environment variable. */
   key: string | undefined;
   /** Your ShieldOps ingestion URL, e.g. https://shieldops.example.com/ingest/v1 */
@@ -37,6 +41,7 @@ export interface ErrorContext {
 }
 
 export declare class ShieldOpsClient {
+  log(level: LogLevel, message: string, fields?: Record<string, unknown>): void;
   constructor(options: ShieldOpsOptions);
   readonly security: {
     loginSucceeded(d: SecurityDetails): void;
@@ -61,4 +66,6 @@ export declare const ShieldOps: {
   instance: ShieldOpsClient | null;
   init(options: ShieldOpsOptions): ShieldOpsClient;
   captureException(error: unknown, context?: ErrorContext): void;
+  /** Structured logs, searchable on the Logs page for 14 days. */
+  logger: Record<LogLevel, (message: string, fields?: Record<string, unknown>) => void>;
 };

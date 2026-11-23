@@ -6,6 +6,9 @@ import { parse, z } from '../lib/validate.js';
 import { SECURITY_TYPES } from '../models/Telemetry.js';
 import { ingestErrors } from '../services/errors.js';
 import { authenticateKey, recordUsage } from '../services/ingestKeys.js';
+import { recordRelease } from '../services/releases.js';
+import { ingestLogs } from '../services/logs.js';
+import { authenticateProbe, probeWork, recordProbeResults } from '../services/probes.js';
 import { ingestMetrics } from '../services/perf.js';
 import { ingestSecurity } from '../services/security.js';
 
@@ -103,6 +106,44 @@ ingestRouter.post('/security', async (req, res) => {
   res.status(202).json({ accepted: events.length });
 });
 
-ingestRouter.post('/releases', (_req, res) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Release tracking arrives in backend phase 8.' } });
+/** Your CI calls this after a deploy. The key decides the application and environment. */
+ingestRouter.post('/releases', async (req, res) => {
+  const key = await authenticateKey(req, 'server');
+  const body = parse(z.object({ version: z.string().trim().min(1).max(100), commit: z.string().trim().max(40).optional(), environment: z.string().max(60).optional(), deployedBy: z.string().trim().max(100).optional() }), req.body);
+  const r = await recordRelease(key.applicationId, key.environmentId, body.version, { commit: body.commit, deployedBy: body.deployedBy || 'CI' });
+  await recordUsage(key, 1);
+  res.status(201).json({ id: r!.id, version: r!.version, deployedAt: r!.deployedAt });
+});
+
+const logsBody = z.object({
+  logs: z.array(z.object({ level: z.enum(['debug', 'info', 'warn', 'error']), message: z.string().max(8000), timestamp: z.string().max(40).optional(), host: z.string().max(200).optional(), fields: z.record(z.string().max(100), z.string().max(1000)).optional() })).min(1).max(500),
+});
+
+ingestRouter.post('/logs', async (req, res) => {
+  const key = await authenticateKey(req, 'server');
+  const { logs } = parse(logsBody, req.body);
+  await ingestLogs(key, logs);
+  await recordUsage(key, logs.length);
+  res.status(202).json({ accepted: logs.length });
+});
+
+/* ───────────── remote probes ───────────── */
+
+ingestRouter.get('/probe/work', async (req, res) => {
+  const p = await authenticateProbe(req);
+  p.lastSeenAt = new Date();
+  p.version = (req.get('user-agent') ?? '').match(/shieldops-agent\/([\w.]+)/)?.[1] ?? p.version;
+  await p.save();
+  res.json({ checks: await probeWork(), refreshSec: 60 });
+});
+
+const probeResults = z.object({ results: z.array(z.object({ monitorId: z.string().regex(/^[0-9a-f]{24}$/), at: z.string().max(40).optional(), status: z.enum(['up', 'degraded', 'down']), latencyMs: z.number().int().min(0).max(600_000).nullable(), error: z.string().max(200).optional() })).max(500) });
+
+ingestRouter.post('/probe/results', async (req, res) => {
+  const p = await authenticateProbe(req);
+  const { results } = parse(probeResults, req.body);
+  p.lastSeenAt = new Date();
+  await p.save();
+  await recordProbeResults(p, results);
+  res.status(202).json({ accepted: results.length });
 });

@@ -17,13 +17,14 @@ export function newKeySecret(kind: 'server' | 'browser') {
 export const scopesFor = (kind: 'server' | 'browser') => (kind === 'browser' ? ['errors'] : ['errors', 'performance', 'security_events']);
 
 /** Finds the key in the request (Authorization: Bearer, or X-ShieldOps-Key) and checks it may send this kind of data. */
-export async function authenticateKey(req: Request, scope: 'errors' | 'performance' | 'security_events'): Promise<IngestionKeyDoc> {
+/** scope 'server' accepts any server key (releases, logs): browser keys can only send errors. */
+export async function authenticateKey(req: Request, scope: 'errors' | 'performance' | 'security_events' | 'server'): Promise<IngestionKeyDoc> {
   const raw = (req.get('authorization')?.replace(/^Bearer\s+/i, '') || req.get('x-shieldops-key') || '').trim();
   if (!/^so_(live|pub)_[A-Za-z0-9]{20,64}$/.test(raw)) throw new ApiError(401, 'INVALID_KEY', 'Missing or malformed ingestion key.');
   const hash = sha256(raw);
   const key = (await IngestionKey.findOne({ hash, status: 'active' })) ?? (await IngestionKey.findOne({ previousHash: hash, status: 'active', previousExpiresAt: { $gt: new Date() } }));
   if (!key) throw new ApiError(401, 'INVALID_KEY', 'This ingestion key is unknown or revoked.');
-  if (!key.scopes.includes(scope)) throw new ApiError(403, 'SCOPE_NOT_ALLOWED', key.kind === 'browser' ? 'Browser keys can only send errors.' : 'This key cannot send this kind of data.');
+  if (scope === 'server' ? key.kind !== 'server' : !key.scopes.includes(scope)) throw new ApiError(403, 'SCOPE_NOT_ALLOWED', key.kind === 'browser' ? 'Browser keys can only send errors.' : 'This key cannot send this kind of data.');
   return key;
 }
 

@@ -64,6 +64,9 @@ afterAll(async () => {
   await mongoose.disconnect();
 });
 
+// A sample JWT, assembled at run time so the source contains no complete token.
+const FAKE_JWT = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'].join('.');
+
 describe('ingestion keys', () => {
   it('shows the key once, stores only a hash, and lists it without the secret', async () => {
     expect(serverKey).toMatch(/^so_live_[A-Za-z0-9]{32}$/);
@@ -94,8 +97,8 @@ describe('ingestion keys', () => {
 describe('errors through the Node SDK', () => {
   it('groups the same bug together, keeps the request and scrubs secrets', async () => {
     for (let i = 0; i < 3; i++) await request(shop).get('/orders/0');
-    sdk.captureException(new Error('Payment failed for ravi@example.com with token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'), { userId: 'user-42' });
-    sdk.captureException(new Error('Payment failed for ravi@example.com with token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'), { userId: 'user-43' });
+    sdk.captureException(new Error(`Payment failed for ravi@example.com with token ${FAKE_JWT}`), { userId: 'user-42' });
+    sdk.captureException(new Error(`Payment failed for ravi@example.com with token ${FAKE_JWT}`), { userId: 'user-43' });
     await sdk.flush();
     const groups = (await get(admin.agent, '/error-groups')).body as { id: string; type: string; message: string; count: number; usersAffected: number; culprit: string; trend: number[] }[];
     const typeErr = groups.find((g) => g.type === 'TypeError')!;

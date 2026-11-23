@@ -16,7 +16,7 @@ const cookieOptions = () => ({
 });
 
 /** Starts a session once the password is accepted. A fresh sign-in counts as a re-authentication. */
-export async function startSession(req: Request, res: Response, user: UserDoc) {
+export async function startSession(req: Request, res: Response, user: UserDoc, method: 'password' | 'sso' = 'password') {
   const token = randomToken(32);
   const now = Date.now();
   const session = await Session.create({
@@ -27,6 +27,7 @@ export async function startSession(req: Request, res: Response, user: UserDoc) {
     reauthUntil: new Date(now + config.reauthMs),
     ip: req.ip,
     userAgent: (req.get('user-agent') ?? '').slice(0, 300),
+    method,
   });
   res.cookie(COOKIE, token, { ...cookieOptions(), maxAge: config.sessionMaxMs });
   return session;

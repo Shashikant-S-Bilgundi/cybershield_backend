@@ -1,6 +1,8 @@
 import { resolve4, resolve6, resolveCname, resolveMx, resolveNs, resolveTxt, resolveCaa } from 'node:dns/promises';
 import { connect as netConnect, isIP } from 'node:net';
-import { checkServerIdentity, connect as tlsConnect, type PeerCertificate } from 'node:tls';
+import { readFileSync } from 'node:fs';
+import { checkServerIdentity, connect as tlsConnect, rootCertificates, type PeerCertificate } from 'node:tls';
+import { config } from '../config.js';
 import { Agent } from 'undici';
 import { ApiError } from './errors.js';
 import { resolveSafe } from './net.js';
@@ -20,10 +22,18 @@ export function classify(err: unknown): CheckError {
   return 'WORKER_ERROR';
 }
 
+/** Public CAs plus WEBHOOK_CA_FILE, for internal endpoints signed by your own certificate authority. */
+let extraCa: string[] | null = null;
+const trustedCas = () => {
+  if (!config.WEBHOOK_CA_FILE) return undefined;
+  extraCa ??= [...rootCertificates, readFileSync(config.WEBHOOK_CA_FILE, 'utf8')];
+  return extraCa;
+};
+
 /** An undici agent whose connections can only go to the addresses that passed the guard. */
 function pinnedAgent(addr: string, timeoutMs: number) {
   return new Agent({
-    connect: { timeout: timeoutMs, lookup: (_h, _o, cb) => cb(null, [{ address: addr, family: isIP(addr) === 6 ? 6 : 4 }]) },
+    connect: { timeout: timeoutMs, ca: trustedCas(), lookup: (_h, _o, cb) => cb(null, [{ address: addr, family: isIP(addr) === 6 ? 6 : 4 }]) },
     headersTimeout: timeoutMs,
     bodyTimeout: timeoutMs,
   });
@@ -86,6 +96,33 @@ export async function guardedGet(url: string, allow: Allow, opts: { timeoutMs: n
     }
   }
   throw new ApiError(422, 'TOO_MANY_REDIRECTS', 'More than 5 redirects.');
+}
+
+/**
+ * POST JSON with the guard and a pinned connection. Redirects are not followed: a webhook that
+ * redirects is treated as a failure, so a URL cannot bounce the request somewhere private.
+ */
+export async function guardedPost(url: string, body: string, headers: Record<string, string>, allow: Allow, timeoutMs = 10_000): Promise<{ status: number; latencyMs: number; text: string }> {
+  const u = new URL(url);
+  if (u.protocol !== 'https:') throw new ApiError(422, 'BAD_URL', 'Only https:// URLs are allowed.');
+  const [addr] = await resolveSafe(u.hostname, allow);
+  const agent = pinnedAgent(addr, timeoutMs);
+  const started = performance.now();
+  try {
+    const res = await fetch(u, {
+      method: 'POST',
+      redirect: 'manual',
+      body,
+      headers: { 'content-type': 'application/json', 'user-agent': 'ShieldOps-Alerts/1.0', ...headers },
+      signal: AbortSignal.timeout(timeoutMs),
+      // @ts-expect-error: Node's fetch accepts an undici dispatcher.
+      dispatcher: agent,
+    });
+    const text = (await res.text()).slice(0, 500);
+    return { status: res.status, latencyMs: Math.round(performance.now() - started), text };
+  } finally {
+    await agent.close();
+  }
 }
 
 /** Opens a TCP connection with the guard; resolves with the connect time. */

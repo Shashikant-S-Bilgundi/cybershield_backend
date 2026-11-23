@@ -6,6 +6,7 @@ import { Asset } from '../models/Asset.js';
 import { Certificate, DomainExpiry } from '../models/AssetChecks.js';
 import { Finding } from '../models/Finding.js';
 import { ErrorGroup } from '../models/Telemetry.js';
+import { Incident } from '../models/Ops.js';
 import { activeFindingFilter } from '../services/findings.js';
 import { appHealth } from '../services/health.js';
 
@@ -39,7 +40,7 @@ dashboardRouter.get('/dashboard', requireAuth, async (_req, res) => {
     applications: apps.length,
     health,
     openAlerts: await Alert.countDocuments({ status: { $in: ['open', 'acknowledged'] } }),
-    activeIncidents: 0,
+    activeIncidents: await Incident.countDocuments({ status: { $in: ['new', 'acknowledged', 'investigating', 'remediating', 'reopened'] } }),
     findingsBySeverity,
     errorGroupsOpen: await ErrorGroup.countDocuments({ status: { $in: ['unresolved', 'regressed'] }, applicationId: { $in: apps.map((a) => a._id) } }),
     expiries,

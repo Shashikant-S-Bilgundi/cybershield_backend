@@ -1,6 +1,6 @@
 {
   "name": "@shieldops/node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send errors, API performance and security events from Node.js apps to ShieldOps.",
   "main": "index.js",
   "types": "index.d.ts",

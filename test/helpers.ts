@@ -15,6 +15,7 @@ export async function freshDb() {
 export const post = (agent: ReturnType<typeof request.agent>, path: string, body?: object) => agent.post(`/api/v1${path}`).set('Origin', ORIGIN).send(body ?? {});
 export const patch = (agent: ReturnType<typeof request.agent>, path: string, body?: object) => agent.patch(`/api/v1${path}`).set('Origin', ORIGIN).send(body ?? {});
 export const del = (agent: ReturnType<typeof request.agent>, path: string) => agent.delete(`/api/v1${path}`).set('Origin', ORIGIN);
+export const put = (agent: ReturnType<typeof request.agent>, path: string, body: object) => agent.put(`/api/v1${path}`).set('Origin', ORIGIN).send(body);
 export const get = (agent: ReturnType<typeof request.agent>, path: string) => agent.get(`/api/v1${path}`);
 
 /** Runs first-time setup; the agent comes back signed in. */

@@ -71,9 +71,9 @@ describe('uptime monitors', () => {
   let monitorId = '';
   let assetId = '';
 
-  it('has the 21 built-in alert rules (phases 2 and 3)', async () => {
+  it('has the 33 built-in alert rules (phases 2 to 8)', async () => {
     const rules = (await get(admin.agent, '/alert-rules')).body as { builtIn: boolean }[];
-    expect(rules.filter((r) => r.builtIn)).toHaveLength(21);
+    expect(rules.filter((r) => r.builtIn)).toHaveLength(33);
   });
 
   it('only monitors the asset whose ownership was proved', async () => {

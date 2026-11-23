@@ -23,6 +23,12 @@ const alertSchema = new Schema({
   renotified: { type: Number, default: 0 },
   lastNotifiedAt: { type: Date, default: null },
   deliveries: { type: [{ channel: String, recipient: String, status: String, at: Date, attempts: Number, _id: false }], default: [] },
+  /** Escalation progress: how many policy steps have been notified, and when the next is due. */
+  escalationPolicyId: { type: Schema.Types.ObjectId, default: null },
+  escalationStep: { type: Number, default: 0 },
+  escalationLastAt: { type: Date, default: null },
+  escalationNextAt: { type: Date, default: null },
+  escalationRepeats: { type: Number, default: 0 },
 });
 alertSchema.index({ key: 1, ruleId: 1, status: 1 });
 alertSchema.set('toJSON', {
@@ -34,6 +40,7 @@ alertSchema.set('toJSON', {
     delete ret.key;
     delete ret.renotified;
     delete ret.lastNotifiedAt;
+    for (const k of ['escalationPolicyId', 'escalationStep', 'escalationLastAt', 'escalationNextAt', 'escalationRepeats']) delete ret[k];
     return ret;
   },
 });

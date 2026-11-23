@@ -83,10 +83,10 @@ describe('request safety', () => {
     expect(r.body.error.code).toBe('BAD_ORIGIN');
   });
 
-  it('answers 501 with the phase for endpoints that are not built yet', async () => {
-    const r = await get(admin.agent, '/servers');
-    expect(r.status).toBe(501);
-    expect(r.body.error.message).toMatch(/phase 4/);
+  it('answers 404 in the usual error shape for endpoints that do not exist', async () => {
+    const r = await get(admin.agent, '/no-such-thing');
+    expect(r.status).toBe(404);
+    expect(r.body.error.code).toBe('NOT_FOUND');
   });
 
   it('never lets audit records be changed', async () => {

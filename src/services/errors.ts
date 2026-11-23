@@ -1,3 +1,4 @@
+import { recordRelease } from './releases.js';
 import { createHash } from 'node:crypto';
 import { hashUser, normalizeMessage, scrubTags, scrubText } from '../lib/scrub.js';
 import { Application } from '../models/Application.js';
@@ -57,6 +58,8 @@ export async function ingestErrors(key: IngestionKeyDoc, events: IncomingError[]
     const release = (e.release ?? '').slice(0, 100);
     const stack = e.stack.slice(0, 50).map((f) => ({ ...f, code: f.code ? scrubText(f.code, 300) : undefined }));
 
+    // The first error from a new version records that release, so release tracking works without CI changes.
+    if (release) await recordRelease(key.applicationId, key.environmentId, release, { at, deployedBy: 'SDK' });
     const existing = await ErrorGroup.findOne({ environmentId: key.environmentId, fingerprint });
     let group: ErrorGroupDoc;
     let isNew = false;

@@ -120,6 +120,11 @@ settingsRouter.patch('/settings', requireReauth, async (req, res) => {
     if (next.enabled && (!/^[\w.-]+\.[a-z]{2,}$/i.test(next.domain ?? '') || !next.clientId || !(clientSecret || next.clientSecretEnc))) {
       throw new ApiError(422, 'SSO_INCOMPLETE', 'Enter the allowed domain, client ID and client secret before turning on single sign-on.');
     }
+    // Switching off password sign-in could lock everyone out if SSO is misconfigured: only someone who has just
+    // signed in through SSO, proving it works, may do it.
+    if (next.enabled && next.allowPasswordFallback === false && doc.sso!.allowPasswordFallback !== false && req.authSession!.method !== 'sso') {
+      throw new ApiError(409, 'SSO_NOT_PROVEN', 'Sign in once with single sign-on first, so you know it works, then turn off the password route.');
+    }
     for (const [k, v] of Object.entries(rest)) {
       note(`sso.${k}`, (doc.sso as unknown as Record<string, unknown>)[k], v);
       (doc.sso as unknown as Record<string, unknown>)[k] = v;

@@ -9,7 +9,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
+const LOG_LEVELS = ['debug', 'info', 'warn', 'error'];
+const MAX_LOGS_PER_MINUTE = 1000;
 /** Must match the ShieldOps server (src/lib/histogram.ts). */
 const BOUNDS = [5, 10, 25, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000];
 const MAX_ERRORS_PER_MINUTE = 100;
@@ -96,6 +98,10 @@ class ShieldOpsClient {
     this.enabled = o.enabled !== false && !!this.key && !!this.endpoint;
     this.errors = [];
     this.securityQueue = [];
+    this.logQueue = [];
+    this.logsThisMinute = 0;
+    this.logMinuteStart = Date.now();
+    this.minLogLevel = LOG_LEVELS.includes(o.logLevel) ? o.logLevel : 'info';
     this.routes = new Map();
     this.windowStart = Date.now();
     this.sentThisMinute = 0;
@@ -259,10 +265,38 @@ class ShieldOpsClient {
     };
   }
 
+  /**
+   * Queues a log line. Fields are flat strings (values are converted). Lines below logLevel (default
+   * "info") are dropped, as are lines beyond 1000 a minute, so a loop cannot flood ShieldOps.
+   */
+  log(level, message, fields) {
+    try {
+      if (!this.enabled || LOG_LEVELS.indexOf(level) < LOG_LEVELS.indexOf(this.minLogLevel)) return;
+      const now = Date.now();
+      if (now - this.logMinuteStart > 60000) {
+        this.logMinuteStart = now;
+        this.logsThisMinute = 0;
+      }
+      if (++this.logsThisMinute > MAX_LOGS_PER_MINUTE) return;
+      const flat = {};
+      for (const [k, v] of Object.entries(fields || {}).slice(0, 30)) flat[String(k).slice(0, 100)] = typeof v === 'string' ? v.slice(0, 1000) : JSON.stringify(v === undefined ? null : v).slice(0, 1000);
+      if (this.environment && !flat.env) flat.env = String(this.environment);
+      this.logQueue.push({ level, message: String(message).slice(0, 8000), timestamp: new Date(now).toISOString(), host: os.hostname(), fields: flat });
+      if (this.logQueue.length >= 500) void this.flushEvents();
+    } catch {
+      /* never throw into the app */
+    }
+  }
+
   async flushEvents() {
     const errors = this.errors.splice(0, 50);
     const security = this.securityQueue.splice(0, 100);
-    await Promise.all([errors.length ? this.post('/errors', { events: errors }) : null, security.length ? this.post('/security', { events: security }) : null]);
+    const logs = this.logQueue.splice(0, 500);
+    await Promise.all([
+      errors.length ? this.post('/errors', { events: errors }) : null,
+      security.length ? this.post('/security', { events: security }) : null,
+      logs.length ? this.post('/logs', { logs }) : null,
+    ]);
   }
 
   async flushMetrics() {
@@ -301,6 +335,8 @@ const ShieldOps = {
   captureException(error, context) {
     if (this.instance) this.instance.captureException(error, context);
   },
+  /** Structured logs, searchable on the Logs page for 14 days: ShieldOps.logger.info('Order paid', { orderId }). */
+  logger: Object.fromEntries(LOG_LEVELS.map((level) => [level, (message, fields) => ShieldOps.instance && ShieldOps.instance.log(level, message, fields)])),
 };
 
 module.exports = { ShieldOps, ShieldOpsClient, parseStack, routeOf };

@@ -9,6 +9,8 @@ const sessionSchema = new Schema({
   absoluteExpiresAt: { type: Date, required: true },
   reauthUntil: { type: Date, default: null },
   revokedAt: { type: Date, default: null },
+  /** How this session signed in: password or single sign-on. */
+  method: { type: String, enum: ['password', 'sso'], default: 'password' },
   ip: String,
   userAgent: String,
   createdAt: { type: Date, default: () => new Date() },

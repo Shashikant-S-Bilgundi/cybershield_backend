@@ -25,6 +25,8 @@ const findingSchema = new Schema({
   lastSeen: { type: Date, default: () => new Date() },
   acceptedRisk: { type: { justification: String, expiresAt: Date, by: Schema.Types.ObjectId, at: Date, _id: false }, default: null },
   history: { type: [{ at: Date, actorName: String, text: String, _id: false }], default: [] },
+  /** Extra detail for findings from code and image scans (SecretDetail or VulnDetail). */
+  code: { type: Schema.Types.Mixed, default: undefined },
 });
 findingSchema.set('toJSON', {
   versionKey: false,
